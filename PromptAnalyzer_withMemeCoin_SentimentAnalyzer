@@ -1,0 +1,226 @@
+# Instalación de dependencias 
+!pip install langchain spacy redis rpy2 seaborn plotly yfinance textblob tweepy pandas-ta
+!python -m spacy download es_core_news_lg
+
+import pandas as pd
+import numpy as np
+from google.colab import files
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import yfinance as yf
+from textblob import TextBlob
+import tweepy
+from typing import List, Dict, Any
+import re
+
+class MemecoinsPromptGenerator:
+    def __init__(self, twitter_api_key: str = None):
+        self.memecoin_symbols = ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK']
+        self.twitter_api_key = twitter_api_key
+        self.security_keywords = [
+            'hack', 'scam', 'rugpull', 'exploit', 'vulnerability',
+            'phishing', 'wallet', 'private key', 'seed phrase'
+        ]
+        
+    def get_market_data(self, symbol: str) -> dict:
+        """Obtiene datos de mercado para una memecoin"""
+        try:
+            ticker = yf.Ticker(f"{symbol}-USD")
+            hist = ticker.history(period="1d")
+            return {
+                'price': hist['Close'].iloc[-1],
+                'volume': hist['Volume'].iloc[-1],
+                'change_24h': ((hist['Close'].iloc[-1] - hist['Open'].iloc[0]) / hist['Open'].iloc[0]) * 100
+            }
+        except Exception as e:
+            print(f"Error getting market data for {symbol}: {e}")
+            return {'price': 0, 'volume': 0, 'change_24h': 0}
+    
+    def analyze_social_sentiment(self, keyword: str) -> float:
+        """Análisis de sentimiento simple usando TextBlob"""
+        # Aquí iría la integración real con Twitter API
+        sample_tweets = [
+            f"¡{keyword} to the moon! 🚀",
+            f"Gran día para {keyword}",
+            f"Cuidado con {keyword}, mucha volatilidad"
+        ]
+        sentiment_scores = [TextBlob(tweet).sentiment.polarity for tweet in sample_tweets]
+        return np.mean(sentiment_scores)
+    
+    def generate_prompt(self, symbol: str) -> str:
+        """Genera un prompt basado en datos de mercado y sentimiento social"""
+        market_data = self.get_market_data(symbol)
+        sentiment = self.analyze_social_sentiment(symbol)
+        
+        template = f"""Analiza el comportamiento de ${symbol} considerando:
+1. Precio actual: ${market_data['price']:.4f}
+2. Cambio 24h: {market_data['change_24h']:.2f}%
+3. Volumen: ${market_data['volume']:,.2f}
+4. Sentimiento social: {"positivo" if sentiment > 0 else "negativo"}
+
+Enfócate en:
+- Movimientos de ballenas
+- Tendencias en redes sociales
+- Análisis técnico de corto plazo
+- Correlación con el mercado general de crypto"""
+        
+        return template
+
+class SimplePromptAnalyzer:
+    def __init__(self):
+        import spacy
+        self.nlp = spacy.load("es_core_news_lg")
+        self.metrics_history = []
+        self.security_analyzer = SecurityAnalyzer()
+        
+    def evaluate_prompt(self, prompt: str) -> dict:
+        """Versión mejorada del evaluador de prompts"""
+        doc = self.nlp(prompt)
+        
+        # Métricas básicas y de seguridad
+        metrics = {
+            'clarity_score': self._calculate_clarity(doc),
+            'specificity_score': self._calculate_specificity(doc),
+            'length': len(doc),
+            'entities': len(doc.ents),
+            'security_score': self.security_analyzer.analyze_prompt(prompt),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        self.metrics_history.append(metrics)
+        return metrics
+    
+    def _calculate_clarity(self, doc) -> float:
+        """Calcula score de claridad basado en estructura sintáctica"""
+        avg_word_length = np.mean([len(token.text) for token in doc])
+        sentence_count = len(list(doc.sents))
+        
+        clarity_score = (1 / (avg_word_length * 0.2)) * (min(sentence_count, 5) / 5)
+        return round(min(clarity_score, 1.0), 2)
+    
+    def _calculate_specificity(self, doc) -> float:
+        """Calcula especificidad basada en entidades y términos técnicos"""
+        technical_terms = len([token for token in doc if token.pos_ == 'NOUN' and not token.is_stop])
+        named_entities = len(doc.ents)
+        
+        specificity_score = (technical_terms + named_entities) / (len(doc) + 1)
+        return round(min(specificity_score, 1.0), 2)
+    
+    def visualize_metrics(self):
+        """Visualización mejorada de métricas usando plotly"""
+        if not self.metrics_history:
+            print("No hay métricas para visualizar")
+            return
+            
+        df = pd.DataFrame(self.metrics_history)
+        
+        # Crear dashboard interactivo con plotly
+        fig = go.Figure()
+        
+        # Distribución de clarity scores
+        fig.add_trace(go.Histogram(
+            x=df['clarity_score'],
+            name='Clarity Distribution'
+        ))
+        
+        # Scatter plot de clarity vs specificity
+        fig.add_trace(go.Scatter(
+            x=df['clarity_score'],
+            y=df['specificity_score'],
+            mode='markers',
+            name='Clarity vs Specificity'
+        ))
+        
+        # Heatmap de correlaciones
+        correlation_matrix = df.corr()
+        fig.add_trace(go.Heatmap(
+            z=correlation_matrix,
+            x=correlation_matrix.columns,
+            y=correlation_matrix.columns,
+            name='Correlation Matrix'
+        ))
+        
+        # Layout configuration
+        fig.update_layout(
+            title='Análisis de Métricas de Prompts',
+            height=800,
+            width=1200,
+            showlegend=True
+        )
+        
+        fig.show()
+    
+    def export_for_ml(self, format: str = 'csv') -> None:
+        """Exporta datos para modelos de ML"""
+        df = pd.DataFrame(self.metrics_history)
+        
+        if format == 'csv':
+            df.to_csv('prompt_metrics_for_ml.csv', index=False)
+        elif format == 'json':
+            df.to_json('prompt_metrics_for_ml.json', orient='records')
+        else:
+            raise ValueError("Formato no soportado")
+
+class SecurityAnalyzer:
+    def __init__(self):
+        self.risk_patterns = {
+            'high': [
+                r'private.*key',
+                r'seed.*phrase',
+                r'password',
+                r'exploit'
+            ],
+            'medium': [
+                r'wallet',
+                r'transfer',
+                r'exchange',
+                r'smart.*contract'
+            ],
+            'low': [
+                r'price',
+                r'trade',
+                r'buy',
+                r'sell'
+            ]
+        }
+    
+    def analyze_prompt(self, prompt: str) -> float:
+        """Analiza la seguridad del prompt"""
+        risk_score = 0
+        
+        # Analizar patrones de riesgo
+        for level, patterns in self.risk_patterns.items():
+            weight = {'high': 1.0, 'medium': 0.5, 'low': 0.2}[level]
+            for pattern in patterns:
+                if re.search(pattern, prompt.lower()):
+                    risk_score += weight
+        
+        return min(risk_score, 1.0)
+
+# Ejemplo de uso
+if __name__ == "__main__":
+    # Inicializar generador de prompts
+    generator = MemecoinsPromptGenerator()
+    analyzer = SimplePromptAnalyzer()
+    
+    # Generar y analizar prompts para diferentes memecoins
+    for symbol in ['DOGE', 'SHIB']:
+        prompt = generator.generate_prompt(symbol)
+        metrics = analyzer.evaluate_prompt(prompt)
+        
+        print(f"\nPrompt generado para {symbol}:")
+        print(prompt)
+        print("\nMétricas:")
+        print(f"Clarity Score: {metrics['clarity_score']}")
+        print(f"Specificity Score: {metrics['specificity_score']}")
+        print(f"Security Score: {metrics['security_score']}")
+        print("-" * 50)
+    
+    # Visualizar resultados
+    analyzer.visualize_metrics()
+    
+    # Exportar datos para ML
+    analyzer.export_for_ml(format='csv')
