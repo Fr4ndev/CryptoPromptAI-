@@ -1,3 +1,4 @@
+https://github.com/Fr4ndev/CryptoPromptAI-/blob/9267a81c105ecec4339ea174cf46b4d06a8a96c5/exampleee.PNG
 # CryptoPromptAI 🚀
 
 
